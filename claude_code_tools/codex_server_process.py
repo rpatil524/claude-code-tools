@@ -33,6 +33,9 @@ from claude_code_tools.codex_server_models import (
 )
 
 
+from claude_code_tools.codex_server_wait import child_exited_without_reaping
+
+
 DIAGNOSTIC_OUTPUT_MAX_BYTES = 64 * 1024
 _LINUX_BOOT_ID = "/proc/sys/kernel/random/boot_id"
 _PROC_PIDTBSDINFO = 3
@@ -203,16 +206,15 @@ def _wait_process_exit_without_reaping(
     deadline: float,
 ) -> bool:
     """Observe child exit while preserving its PID through group cleanup."""
-    wait_flags = os.WEXITED | os.WNOHANG | os.WNOWAIT
     while True:
         try:
-            result = os.waitid(os.P_PID, process.pid, wait_flags)
+            exited = child_exited_without_reaping(process.pid)
         except ChildProcessError:
             process.poll()
             return False
         except InterruptedError:
             continue
-        if result is not None:
+        if exited:
             return True
         remaining = deadline - time.monotonic()
         if remaining <= 0:
