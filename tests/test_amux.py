@@ -437,7 +437,7 @@ class TestCli:
 
         import argparse as _ap
 
-        cli.cmd_pick(_ap.Namespace(max_age=30.0))
+        cli.cmd_pick(cli.build_parser().parse_args(["pick"]))
         binds = [c for c in captured["cmd"] if "reload(" in c]
         assert binds, "no reload bind was built"
         inner = binds[0].split("reload(", 1)[1].rstrip(")")
@@ -908,7 +908,7 @@ class TestFzfStderrReachesTheTerminal:
             lambda _: ([_A(pane="a:1.1", session="a", kind="claude")], False),
         )
         monkeypatch.setattr(cli.subprocess, "run", fake_run)
-        cli.cmd_pick(_ap.Namespace(max_age=30.0))
+        cli.cmd_pick(cli.build_parser().parse_args(["pick"]))
 
         assert seen.get("capture_output") is not True, "must not capture stderr"
         assert seen.get("stderr") is None, "stderr must be inherited"

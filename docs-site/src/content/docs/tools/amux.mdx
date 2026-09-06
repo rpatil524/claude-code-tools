@@ -41,15 +41,52 @@ Every pane running an agent gets one of four states, sorted most urgent first:
 prompt or an `AskUserQuestion` is invisible among a hundred panes, and it
 will sit there indefinitely until you notice.
 
+## Finding dormant sessions
+
+```bash
+amux list --dormant --sort oldest
+amux pick --dormant --sort oldest
+amux list --dormant-hours 48 --sort oldest --json
+```
+
+Each row shows **INPUT AGE**, the age of the last recorded submitted user
+input, and **ACTIVITY**, independently of the current state:
+
+- `dormant`: waiting at a prompt, with known input older than 72 hours.
+- `recent`: waiting, with input within the threshold.
+- `working`: the current state is `busy` or `bg`, regardless of input age.
+- `unknown`: no reliable last-input evidence is available.
+
+Use `--dormant-hours` to change the threshold. `--sort oldest` puts known
+oldest input first and unknown ages last. Both options work in the picker;
+refresh preserves them. With the usual tmux shortcut, type `dormant` to
+filter the displayed rows, or open the dedicated dormant picker above.
+
+Input timestamps come from the harness's submitted-input history, not file
+modification times, terminal output, or the clock in a status footer. Hooks,
+tool results, and monitor output do not count as submitted input. These are
+**session-level** timestamps: two panes sharing a conversation share its
+last-input time. JSON records identify this as `input_scope: "shared-session"`.
+Unsent drafts are not dated; check the pane before exiting its agent.
+
+Claude's live PID registry identifies its current conversation and name.
+Codex matching requires an open rollout file associated with the running
+agent; an old `resume` command or a matching working directory is insufficient.
+Some Codex clients keep history remotely and therefore show `unknown`.
+
+History reads are bounded, so sufficiently old input outside the retained
+lookup window also shows `unknown`. Personal and alternate account homes are
+checked separately. No sessions are exited or sent input by scanning.
+
 ## What each row shows
 
 ```
-sasy:1.8   input  codex   certify-main    observability@feat/certify-codex   gpt-5.6-sol · …
-└─ pane    state  harness session name    repo@branch                        context
+sasy:1.8   input  codex   4.2d dormant certify-main  observability@main
+└─ pane    state  harness age  activity session name repo@branch
 ```
 
 - **pane** — the tmux target; jump to it manually with `tmux switch-client`
-- **name** — the agent's session name, from its own `--resume`/`--name`
+- **name** — the live Claude registry name when available, otherwise `--resume`/`--name`
   argument, the tmux pane title, or an on-screen banner
 - **repo@branch** — read directly from `.git/HEAD`, so git worktrees resolve
   to the branch they are actually on
@@ -66,7 +103,7 @@ string like `2.1.220` because it runs a versioned binary, and Codex reports
 shell — including under wrappers like `direnv exec` — and matches on
 `argv[0]`, or on the script path when `argv[0]` is an interpreter.
 
-**What is it doing?** From the screen, since only the rendered UI knows.
+**What is it doing?** From the screen and available live runtime metadata.
 Claude's prompts are a structured choice list, so they are recognised
 directly; position disambiguates a *pending* prompt from one you already
 answered, because an answered prompt has the harness footer rendered below
@@ -78,7 +115,8 @@ working. Expect occasional misses and false alarms there.
 
 ## Speed
 
-On a server with 160 panes: **1.1s cold, 0.075s warm.**
+Pane captures run concurrently, and each account history is read once per scan.
+The additional history lookup is bounded to keep refresh work predictable.
 
 The picker opens on cached rows and refreshes in the background, so it feels
 instant regardless of how many panes you have. `--max-age` controls how long
@@ -107,7 +145,9 @@ bind-key a switch-client -l   # return to the session you came from
 ## Scripting
 
 `amux list --json` emits one object per agent with every field — pane,
-session, kind, state, name, cwd, repo, branch, model, info, pid — so you can
+session, kind, state, name, cwd, repo, branch, model, info, pid, `session_id`,
+`last_input_at` (Unix seconds), `input_age_seconds`, `input_source`,
+`input_scope`, and `inactivity` — so you can
 drive alerts or dashboards from it:
 
 ```bash

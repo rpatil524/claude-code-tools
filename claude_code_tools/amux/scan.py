@@ -19,7 +19,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import detect
+from . import activity, detect
 from .model import Agent
 
 #: Field separator for tmux -F output; chosen to not occur in paths or titles.
@@ -238,6 +238,7 @@ def scan(workers: int = 16) -> list[Agent]:
             )
         )
 
+    activity.enrich(agents, child_map)
     agents.sort(key=lambda a: (a.rank, a.pane))
     return agents
 
