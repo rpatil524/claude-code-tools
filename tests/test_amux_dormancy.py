@@ -108,3 +108,23 @@ def test_cached_nonmatching_picker_refreshes(monkeypatch: pytest.MonkeyPatch) ->
     assert cli.cmd_pick(args) == 0
     assert len(calls) == 1
     assert "dormant" in calls[0]
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--dormant", "--max-age", "0"],
+    ["--max-age", "0", "--dormant"],
+    ["--dormant", "--max-age=0"],
+    ["--max-age=0", "--dormant"],
+    ["--max-age", "0", "pick", "--dormant"],
+    ["pick", "--dormant", "--max-age", "0"],
+])
+def test_picker_option_order(
+    arguments: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Namespace] = []
+    monkeypatch.setattr(cli.scan, "tmux_available", lambda: True)
+    monkeypatch.setattr(cli, "cmd_pick", lambda args: seen.append(args) or 0)
+    assert cli.main(arguments) == 0
+    assert len(seen) == 1
+    assert seen[0].max_age == 0
+    assert seen[0].dormant is True

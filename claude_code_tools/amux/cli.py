@@ -209,6 +209,11 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("--refresh", action="store_true")
     rows.set_defaults(func=cmd_rows)
 
+    for command in (pick, lst, rows, scan_cmd):
+        command.add_argument(
+            "--max-age", type=_finite_seconds, default=argparse.SUPPRESS,
+            help="seconds a cached scan stays usable (default: 30)",
+        )
     for command in (pick, lst, rows):
         command.add_argument(
             "--dormant", action="store_true",
@@ -234,10 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     # silently used the 30s default.
     known = {"pick", "list", "scan", "rows"}
     if not any(tok in known for tok in raw):
-        index = 2 if raw[:1] == ["--max-age"] else 0
-        if raw and raw[0].startswith("--max-age="):
-            index = 1
-        raw.insert(index, "pick")
+        raw.insert(0, "pick")
     args = parser.parse_args(raw)
     if not scan.tmux_available():
         print("amux: no tmux server running", file=sys.stderr)
