@@ -98,6 +98,9 @@ def cmd_pick(args: argparse.Namespace) -> int:
 
     agents, from_cache = _agents_for_display(args.max_age)
     agents = _display(agents, args)
+    if not agents and from_cache:
+        agents = _display(_fresh(), args)
+        from_cache = False
     if not agents:
         print("no matching agents")
         return 0
@@ -113,7 +116,10 @@ def cmd_pick(args: argparse.Namespace) -> int:
         f"ctrl-r:reload({self_cmd} rows --refresh{view_flags})",
         # Opening on cached rows is what makes this instant; refresh the
         # moment the list is up so stale states self-correct without a keypress.
-        f"load:reload-sync({self_cmd} rows --refresh{view_flags})" if from_cache else "",
+        (
+            f"load:reload-sync({self_cmd} rows --refresh{view_flags})"
+            if from_cache else ""
+        ),
     ]
     cmd = [
         "fzf",

@@ -215,7 +215,9 @@ def enrich(agents: list[Agent], child_map: dict[int, list[tuple[int, str]]]) -> 
                     runtime_records.append(record)
             method = "claude-pid"
         else:
-            open_paths = set().union(*(paths.get(p, set()) for p in pid_sets[agent.pane]))
+            open_paths = set().union(
+                *(paths.get(p, set()) for p in pid_sets[agent.pane])
+            )
             for path in open_paths:
                 match = _ROLLOUT.fullmatch(path.name)
                 for home in homes["codex"]:

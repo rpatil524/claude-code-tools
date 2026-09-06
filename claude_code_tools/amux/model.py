@@ -126,6 +126,8 @@ class Agent:
                 or not math.isfinite(value) or value < 0
             ):
                 return None
+        if not isinstance(known.get("extra", {}), dict):
+            return None
         # Literal[...] is a type-checker hint only; a hand-edited cache can
         # still carry kind="vim" or state="waiting" and render as an agent.
         if known.get("kind") not in ("claude", "codex"):

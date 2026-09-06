@@ -78,3 +78,33 @@ def test_prompt_with_active_goal_is_not_dormant() -> None:
                   extra={"goal_status": "active"})
     agent.classify_inactivity(now=300001)
     assert agent.inactivity == "working"
+
+
+@pytest.mark.parametrize("extra", [None, [], "broken"])
+def test_invalid_cached_extra_rejected(extra: object) -> None:
+    data = Agent("a:1.1", "a", "codex").to_dict()
+    data["extra"] = extra
+    assert Agent.from_dict(data) is None
+
+
+def test_cached_nonmatching_picker_refreshes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from subprocess import CompletedProcess
+
+    cached = Agent("a:1.1", "a", "claude", state="busy", last_input_at=1)
+    fresh = Agent("a:1.1", "a", "claude", state="idle", last_input_at=1)
+    calls: list[str] = []
+    monkeypatch.setattr(cli.shutil, "which", lambda _: "/usr/bin/fzf")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_agents_for_display", lambda _: ([cached], True))
+    monkeypatch.setattr(cli, "_fresh", lambda: [fresh])
+
+    def run(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append(str(kwargs["input"]))
+        return CompletedProcess(command, 1, stdout="")
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    args = cli.build_parser().parse_args(["pick", "--dormant", "--sort", "oldest"])
+    assert cli.cmd_pick(args) == 0
+    assert len(calls) == 1
+    assert "dormant" in calls[0]
