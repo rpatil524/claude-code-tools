@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -37,6 +39,12 @@ class Agent:
         model: Model string parsed from the harness footer, e.g. ``opus-5``.
         info: One-line context lifted from the pane's footer.
         pid: PID of the agent process itself (not the pane's shell).
+        session_id: Current conversation ID, only when reliably matched.
+        last_input_at: Last recorded submitted user input, Unix seconds.
+        input_source: Identity method and history read status, or unknown.
+        input_scope: Session-level evidence; shared-session for duplicate panes.
+        inactivity: Working, recent, dormant, or unknown input-age classification.
+        input_age_seconds: Age calculated at display time, including cached rows.
     """
 
     pane: str
@@ -50,7 +58,36 @@ class Agent:
     model: str = ""
     info: str = ""
     pid: int = 0
+    session_id: str = ""
+    last_input_at: float | None = None
+    input_source: str = "unknown"
+    input_scope: str = "unknown"
+    inactivity: str = "unknown"
+    input_age_seconds: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def classify_inactivity(
+        self, threshold_hours: float = 72, now: float | None = None
+    ) -> None:
+        """Classify old submitted input independently of current activity."""
+        now = time.time() if now is None else now
+        self.input_age_seconds = (
+            max(0, now - self.last_input_at)
+            if self.last_input_at is not None else None
+        )
+        working = (
+            self.state in ("busy", "bg")
+            or self.extra.get("runtime_status") in ("shell", "working", "running")
+            or self.extra.get("goal_status") == "active"
+        )
+        if working:
+            self.inactivity = "working"
+        elif self.input_age_seconds is None:
+            self.inactivity = "unknown"
+        elif self.input_age_seconds > threshold_hours * 3600:
+            self.inactivity = "dormant"
+        else:
+            self.inactivity = "recent"
 
     @property
     def rank(self) -> int:
@@ -74,12 +111,22 @@ class Agent:
             value = known.get(field_name)
             if value is not None and not isinstance(value, str):
                 return None
-        for field_name in ("name", "cwd", "repo", "branch", "model", "info"):
+        for field_name in ("name", "cwd", "repo", "branch", "model", "info",
+                           "session_id", "input_source", "input_scope", "inactivity"):
             if not isinstance(known.get(field_name, ""), str):
                 return None
         if known.get("pane") is None or known.get("session") is None:
             return None
         if not isinstance(known.get("pid", 0), int):
+            return None
+        for key in ("last_input_at", "input_age_seconds"):
+            value = known.get(key)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or value < 0
+            ):
+                return None
+        if not isinstance(known.get("extra", {}), dict):
             return None
         # Literal[...] is a type-checker hint only; a hand-edited cache can
         # still carry kind="vim" or state="waiting" and render as an agent.

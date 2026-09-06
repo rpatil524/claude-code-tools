@@ -24,7 +24,7 @@ from .model import Agent
 
 _FZF_HEADER = (
     "enter=jump  ctrl-r=refresh  esc=quit    "
-    "input=asking you  busy=working  bg=monitors  idle"
+    "input=asking you  busy=working  bg=background  age=last submitted input"
 )
 
 
@@ -44,11 +44,27 @@ def _agents_for_display(max_age: float) -> tuple[list[Agent], bool]:
     return _fresh(), False
 
 
+def _display(agents: list[Agent], args: argparse.Namespace) -> list[Agent]:
+    """Refresh ages even for cached rows, then apply the requested view."""
+    for agent in agents:
+        agent.classify_inactivity(args.dormant_hours)
+    if args.dormant:
+        agents = [a for a in agents if a.inactivity == "dormant"]
+    if args.sort == "oldest":
+        agents = sorted(agents, key=lambda a: (
+            a.last_input_at is None,
+            a.last_input_at if a.last_input_at is not None else 0,
+            a.pane,
+        ))
+    return agents
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """Print every live agent as a table or JSON."""
     agents = cache.read(max_age=args.max_age)[0] if args.cached else _fresh()
     if not agents and args.cached:
         agents = _fresh()
+    agents = _display(agents, args)
     if args.json:
         print(render.as_json(agents))
     else:
@@ -67,7 +83,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 def cmd_rows(args: argparse.Namespace) -> int:
     """Emit picker rows (internal: used by fzf's reload binding)."""
     agents = _fresh() if args.refresh else _agents_for_display(args.max_age)[0]
-    print(render.picker_lines(agents, colour=True))
+    print(render.picker_lines(_display(agents, args), colour=True))
     return 0
 
 
@@ -81,18 +97,29 @@ def cmd_pick(args: argparse.Namespace) -> int:
         return 1
 
     agents, from_cache = _agents_for_display(args.max_age)
+    agents = _display(agents, args)
+    if not agents and from_cache:
+        agents = _display(_fresh(), args)
+        from_cache = False
     if not agents:
-        print("no agents running")
+        print("no matching agents")
         return 0
 
     # fzf runs bind commands through a shell, so the interpreter path must be
     # quoted: a venv at "/tmp/my venv/bin/python" would otherwise run "/tmp/my".
     self_cmd = f"{shlex.quote(sys.executable)} -m claude_code_tools.amux"
+    view_flags = (
+        f" --dormant-hours {args.dormant_hours} --sort {args.sort}"
+        + (" --dormant" if args.dormant else "")
+    )
     binds = [
-        f"ctrl-r:reload({self_cmd} rows --refresh)",
+        f"ctrl-r:reload({self_cmd} rows --refresh{view_flags})",
         # Opening on cached rows is what makes this instant; refresh the
         # moment the list is up so stale states self-correct without a keypress.
-        f"load:reload-sync({self_cmd} rows --refresh)" if from_cache else "",
+        (
+            f"load:reload-sync({self_cmd} rows --refresh{view_flags})"
+            if from_cache else ""
+        ),
     ]
     cmd = [
         "fzf",
@@ -182,6 +209,24 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("--refresh", action="store_true")
     rows.set_defaults(func=cmd_rows)
 
+    for command in (pick, lst, rows, scan_cmd):
+        command.add_argument(
+            "--max-age", type=_finite_seconds, default=argparse.SUPPRESS,
+            help="seconds a cached scan stays usable (default: 30)",
+        )
+    for command in (pick, lst, rows):
+        command.add_argument(
+            "--dormant", action="store_true",
+            help="show waiting agents with old known submitted input only",
+        )
+        command.add_argument(
+            "--dormant-hours", type=_finite_seconds, default=72.0,
+            help="input age in hours above which waiting agents are dormant (72)",
+        )
+        command.add_argument(
+            "--sort", choices=("state", "oldest"), default="state",
+            help="sort by current state or oldest known submitted input",
+        )
     return parser
 
 
@@ -193,8 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     # only ["pick"] -- reparsing dropped global options, so `amux --max-age 0`
     # silently used the 30s default.
     known = {"pick", "list", "scan", "rows"}
-    if not any(tok in known for tok in raw):
-        raw.append("pick")
+    if not any(tok in known | {"-h", "--help"} for tok in raw):
+        raw.insert(0, "pick")
     args = parser.parse_args(raw)
     if not scan.tmux_available():
         print("amux: no tmux server running", file=sys.stderr)

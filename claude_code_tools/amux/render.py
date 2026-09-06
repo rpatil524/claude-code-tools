@@ -29,6 +29,18 @@ def _colour(state: str, text: str, colour: bool) -> str:
     return f"\033[{STATE_COLOR.get(state, '0')}m{text}\033[0m"
 
 
+def input_age(agent: Agent) -> str:
+    """Compact age of the last submitted input, never terminal output age."""
+    age = agent.input_age_seconds
+    if age is None:
+        return "unknown"
+    if age >= 86400:
+        return f"{age / 86400:.1f}d"
+    if age >= 3600:
+        return f"{age / 3600:.1f}h"
+    return f"{int(age // 60)}m"
+
+
 def picker_row(agent: Agent, colour: bool = True) -> str:
     """The visible part of an fzf row (no key field); see :func:`picker_lines`."""
     state = _colour(agent.state, f"{agent.state:<{_W_STATE}}", colour)
@@ -36,6 +48,7 @@ def picker_row(agent: Agent, colour: bool = True) -> str:
     where = _clip(f"{agent.repo}{branch}", _W_REPO)
     return (
         f"{_clip(agent.pane, _W_PANE):<{_W_PANE}} {state} {agent.kind:<{_W_KIND}} "
+        f"{input_age(agent):>9} {agent.inactivity:<8} "
         f"{_clip(agent.name or '-', _W_NAME):<{_W_NAME}} "
         f"{where:<{_W_REPO}} {agent.info}"
     )
@@ -74,6 +87,7 @@ def table(agents: list[Agent], colour: bool = True) -> str:
 
     header = (
         f"{'PANE':<{_W_PANE}} {'STATE':<{_W_STATE}} {'KIND':<{_W_KIND}} "
+        f"{'INPUT AGE':>9} {'ACTIVITY':<8} "
         f"{'NAME':<{_W_NAME}} {'REPO@BRANCH':<{_W_REPO}} CONTEXT"
     )
     rule = "─" * min(len(header) + 20, 120)

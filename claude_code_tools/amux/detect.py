@@ -93,7 +93,9 @@ _BUSY = re.compile(
 #: those can be used). Without this a pane with a working subagent but a free
 #: main prompt reported as idle.
 _BG = re.compile(
-    r"\b\d+\s+monitors?\b|^\s*◯\s+\S",
+    r"\b[1-9]\d*\s+monitors?\b|"
+    r"\b[1-9]\d*\s+shells? still running\b|"
+    r"^\s*⏵⏵.*·\s*[1-9]\d*\s+shells?\b|^\s*◯\s+\S",
     re.MULTILINE,
 )
 
@@ -136,7 +138,11 @@ def detect_state(screen: str, kind: Kind) -> State:
         return "busy"
     if kind == "codex" and _codex_awaiting_answer(tail):
         return "input"
-    if _BG.search(screen):
+    background_lines = "\n".join(
+        line.rstrip() for line in screen.splitlines()
+        if not re.search(r"^\s*◯.*\bidle\s*$", line)
+    )
+    if _BG.search(background_lines):
         return "bg"
     return "idle"
 
