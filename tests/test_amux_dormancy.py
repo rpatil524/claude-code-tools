@@ -128,3 +128,15 @@ def test_picker_option_order(
     assert len(seen) == 1
     assert seen[0].max_age == 0
     assert seen[0].dormant is True
+
+
+@pytest.mark.parametrize("arguments", [["--help"], ["--max-age", "0", "--help"]])
+def test_root_help_keeps_subcommand_discovery(
+    arguments: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as result:
+        cli.main(arguments)
+    assert result.value.code == 0
+    output = capsys.readouterr().out
+    assert "usage: amux pick" not in output
+    assert "list" in output and "scan" in output

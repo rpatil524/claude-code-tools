@@ -238,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     # only ["pick"] -- reparsing dropped global options, so `amux --max-age 0`
     # silently used the 30s default.
     known = {"pick", "list", "scan", "rows"}
-    if not any(tok in known for tok in raw):
+    if not any(tok in known | {"-h", "--help"} for tok in raw):
         raw.insert(0, "pick")
     args = parser.parse_args(raw)
     if not scan.tmux_available():
